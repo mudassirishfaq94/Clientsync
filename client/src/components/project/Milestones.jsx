@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useFetch, useToast } from '../../lib/hooks.jsx';
+import { useConfirm } from '../../lib/useConfirm.jsx';
 import {
   Alert, Badge, Button, Card, CardHead, Empty, ErrorState, Field, Input, Loading, Modal,
   Select, Textarea, formatDate, label, STATUS_TONE,
@@ -75,6 +76,7 @@ export default function Milestones({ project, myRole }) {
   const tasks = useFetch(`/api/projects/${project.id}/tasks`);
   const [modal, setModal] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const { confirm, dialog } = useConfirm();
   const isFreelancer = myRole === 'freelancer';
   const milestones = data?.milestones || [];
 
@@ -90,19 +92,18 @@ export default function Milestones({ project, myRole }) {
     }
   }
 
-  async function remove(m) {
-    if (!window.confirm(`Delete milestone "${m.title}"? Tasks will stay but become unassigned from it.`)) return;
-    setBusyId(m.id);
-    try {
-      await api.del(`/api/projects/${project.id}/milestones/${m.id}`);
-      toast.success('Milestone deleted.');
-      await reload(true);
-      tasks.reload(true);
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusyId(null);
-    }
+  function remove(m) {
+    confirm({
+      title: 'Delete milestone',
+      message: `Delete "${m.title}"? Its tasks stay in the project but become unassigned from any milestone.`,
+      confirmLabel: 'Delete milestone',
+      onConfirm: async () => {
+        await api.del(`/api/projects/${project.id}/milestones/${m.id}`);
+        toast.success('Milestone deleted.');
+        await reload(true);
+        tasks.reload(true);
+      },
+    });
   }
 
   return (
@@ -161,6 +162,7 @@ export default function Milestones({ project, myRole }) {
           })}
         </div>
       )}
+      {dialog}
       {modal && (
         <MilestoneModal
           projectId={project.id}

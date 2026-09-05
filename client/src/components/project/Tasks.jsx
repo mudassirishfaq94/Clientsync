@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useFetch, useToast } from '../../lib/hooks.jsx';
+import { useConfirm } from '../../lib/useConfirm.jsx';
 import {
   Alert, Badge, Button, Card, CardHead, Empty, ErrorState, Field, Input, Loading, Modal,
   Select, Textarea, formatDate, label, STATUS_TONE,
@@ -120,6 +121,7 @@ export default function Tasks({ project, members, myRole, onChanged }) {
   const ms = useFetch(`/api/projects/${project.id}/milestones`);
   const [modal, setModal] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const { confirm, dialog } = useConfirm();
   const isFreelancer = myRole === 'freelancer';
   const tasks = data?.tasks || [];
 
@@ -136,19 +138,18 @@ export default function Tasks({ project, members, myRole, onChanged }) {
     }
   }
 
-  async function remove(task) {
-    if (!window.confirm(`Delete task "${task.title}"?`)) return;
-    setBusyId(task.id);
-    try {
-      await api.del(`/api/projects/${project.id}/tasks/${task.id}`);
-      toast.success('Task deleted.');
-      await reload(true);
-      onChanged?.();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusyId(null);
-    }
+  function remove(task) {
+    confirm({
+      title: 'Delete task',
+      message: `Delete "${task.title}"? This cannot be undone.`,
+      confirmLabel: 'Delete task',
+      onConfirm: async () => {
+        await api.del(`/api/projects/${project.id}/tasks/${task.id}`);
+        toast.success('Task deleted.');
+        await reload(true);
+        onChanged?.();
+      },
+    });
   }
 
   const refresh = async () => {
@@ -217,6 +218,7 @@ export default function Tasks({ project, members, myRole, onChanged }) {
           })}
         </div>
       )}
+      {dialog}
       {modal && (
         <TaskModal
           projectId={project.id}

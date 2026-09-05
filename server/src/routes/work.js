@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { requireAuth, projectAccess } from '../auth.js';
-import { newId, validate, logActivity } from '../util.js';
+import { newId, validate, logActivity, notifyProject } from '../util.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth);
@@ -37,7 +37,7 @@ router.post('/:projectId/milestones', projectAccess({ freelancerOnly: true }), (
   db.prepare(
     'INSERT INTO milestones (id, project_id, title, description, due_date, position) VALUES (?,?,?,?,?,?)'
   ).run(id, req.project.id, data.title, data.description, data.due_date || null, pos);
-  logActivity(req.project.id, req.user.id, `added milestone "${data.title}"`);
+  logActivity(req.project.id, req.user.id, `added milestone "${data.title}"`, 'milestone', id);
   res.status(201).json({ milestone: db.prepare('SELECT * FROM milestones WHERE id = ?').get(id) });
 });
 
@@ -67,7 +67,7 @@ router.patch('/:projectId/milestones/:mid', projectAccess({ freelancerOnly: true
   }
   if (!fields.length) return res.status(400).json({ error: 'Nothing to update.' });
   db.prepare(`UPDATE milestones SET ${fields.join(', ')} WHERE id = ?`).run(...values, m.id);
-  if (data.status) logActivity(req.project.id, req.user.id, `marked milestone "${m.title}" as ${data.status}`);
+  if (data.status) logActivity(req.project.id, req.user.id, `marked milestone "${m.title}" as ${data.status}`, 'milestone', m.id);
   res.json({ milestone: db.prepare('SELECT * FROM milestones WHERE id = ?').get(m.id) });
 });
 
@@ -143,7 +143,7 @@ router.post('/:projectId/tasks', projectAccess({ freelancerOnly: true }), (req, 
     data.due_date || null,
     req.user.id
   );
-  logActivity(req.project.id, req.user.id, `created task "${data.title}"`);
+  logActivity(req.project.id, req.user.id, `created task "${data.title}"`, 'task', id);
   res.status(201).json({ task: db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) });
 });
 
@@ -177,7 +177,7 @@ router.patch('/:projectId/tasks/:tid', projectAccess({ freelancerOnly: true }), 
   if (!fields.length) return res.status(400).json({ error: 'Nothing to update.' });
   db.prepare(`UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`).run(...values, t.id);
   if (data.status && data.status !== t.status) {
-    logActivity(req.project.id, req.user.id, `moved task "${t.title}" to ${data.status.replace('_', ' ')}`);
+    logActivity(req.project.id, req.user.id, `moved task "${t.title}" to ${data.status.replace('_', ' ')}`, 'task', t.id);
   }
   res.json({ task: db.prepare('SELECT * FROM tasks WHERE id = ?').get(t.id) });
 });
@@ -215,6 +215,14 @@ router.post('/:projectId/messages', projectAccess(), (req, res) => {
     req.user.id,
     data.body
   );
+  notifyProject({
+    projectId: req.project.id,
+    actorId: req.user.id,
+    type: 'message',
+    title: `New message from ${req.user.name}`,
+    body: data.body.slice(0, 140),
+    link: `/projects/${req.project.id}/messages`,
+  });
   const msg = db
     .prepare(
       `SELECT m.*, u.name author_name, u.role author_role FROM messages m
@@ -268,7 +276,15 @@ router.post('/:projectId/approvals', projectAccess({ freelancerOnly: true }), (r
   db.prepare(
     'INSERT INTO approvals (id, project_id, milestone_id, file_id, title, notes, requested_by) VALUES (?,?,?,?,?,?,?)'
   ).run(id, req.project.id, data.milestone_id || null, data.file_id || null, data.title, data.notes, req.user.id);
-  logActivity(req.project.id, req.user.id, `requested approval for "${data.title}"`);
+  logActivity(req.project.id, req.user.id, `requested approval for "${data.title}"`, 'approval', id);
+  notifyProject({
+    projectId: req.project.id,
+    actorId: req.user.id,
+    type: 'approval_requested',
+    title: `Approval requested: ${data.title}`,
+    body: data.notes.slice(0, 140),
+    link: `/projects/${req.project.id}/approvals`,
+  });
   res.status(201).json({ approval: db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) });
 });
 
@@ -298,8 +314,21 @@ router.post('/:projectId/approvals/:aid/decision', projectAccess({ clientOnly: t
   logActivity(
     req.project.id,
     req.user.id,
-    data.decision === 'approved' ? `approved "${a.title}"` : `requested changes on "${a.title}"`
+    data.decision === 'approved' ? `approved "${a.title}"` : `requested changes on "${a.title}"`,
+    'approval',
+    a.id
   );
+  notifyProject({
+    projectId: req.project.id,
+    actorId: req.user.id,
+    type: `approval_${data.decision}`,
+    title:
+      data.decision === 'approved'
+        ? `${req.user.name} approved "${a.title}"`
+        : `${req.user.name} requested changes on "${a.title}"`,
+    body: data.decision_note.slice(0, 140),
+    link: `/projects/${req.project.id}/approvals`,
+  });
   res.json({ approval: db.prepare('SELECT * FROM approvals WHERE id = ?').get(a.id) });
 });
 

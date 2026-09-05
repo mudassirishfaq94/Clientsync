@@ -18,10 +18,10 @@ export default function Landing() {
           messages and client approvals in a single place. No more chasing email threads.
         </p>
         <div className="hero-actions">
-          <Link className="btn" to="/register">
+          <Link className="btn" to="/auth/register">
             Create your account
           </Link>
-          <Link className="btn secondary" to="/login">
+          <Link className="btn secondary" to="/auth/login">
             Sign in
           </Link>
         </div>

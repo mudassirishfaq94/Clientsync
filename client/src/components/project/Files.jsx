@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useAuth, useFetch, useToast } from '../../lib/hooks.jsx';
+import { useConfirm } from '../../lib/useConfirm.jsx';
 import { Alert, Button, Card, CardHead, Empty, ErrorState, Loading, formatBytes, formatDateTime } from '../ui.jsx';
 
 export default function Files({ project, myRole }) {
@@ -11,6 +12,7 @@ export default function Files({ project, myRole }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const { confirm, dialog } = useConfirm();
   const files = data?.files || [];
 
   async function onPick(e) {
@@ -37,18 +39,17 @@ export default function Files({ project, myRole }) {
     }
   }
 
-  async function remove(f) {
-    if (!window.confirm(`Delete "${f.filename}"?`)) return;
-    setBusyId(f.id);
-    try {
-      await api.del(`/api/projects/${project.id}/files/${f.id}`);
-      toast.success('File deleted.');
-      await reload(true);
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusyId(null);
-    }
+  function remove(f) {
+    confirm({
+      title: 'Delete file',
+      message: `Delete "${f.filename}"? This permanently removes it for everyone on the project.`,
+      confirmLabel: 'Delete file',
+      onConfirm: async () => {
+        await api.del(`/api/projects/${project.id}/files/${f.id}`);
+        toast.success('File deleted.');
+        await reload(true);
+      },
+    });
   }
 
   const canDelete = (f) => f.uploader_id === user.id || myRole === 'freelancer';
@@ -98,6 +99,7 @@ export default function Files({ project, myRole }) {
           ))}
         </div>
       )}
+      {dialog}
     </Card>
   );
 }

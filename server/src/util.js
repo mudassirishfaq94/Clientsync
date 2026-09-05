@@ -17,13 +17,35 @@ export function validate(schema, body, res) {
   return parsed.data;
 }
 
-export function logActivity(projectId, actorId, action) {
-  db.prepare('INSERT INTO activity (id, project_id, actor_id, action) VALUES (?,?,?,?)').run(
-    newId(),
-    projectId,
-    actorId,
-    action
-  );
+export function logActivity(projectId, actorId, action, entityType = 'project', entityId = null) {
+  db.prepare(
+    `INSERT INTO activity_logs (id, project_id, actor_id, entity_type, entity_id, action)
+     VALUES (?,?,?,?,?,?)`
+  ).run(newId(), projectId, actorId, entityType, entityId, action);
 }
 
-export const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+/**
+ * Notify every project member except the actor.
+ * Respects each recipient's notify_in_app preference.
+ */
+export function notifyProject({ projectId, actorId, type, title, body = '', link = '' }) {
+  const recipients = db
+    .prepare(
+      `SELECT pm.user_id FROM project_members pm
+       LEFT JOIN profiles p ON p.user_id = pm.user_id
+       WHERE pm.project_id = ? AND pm.user_id != ? AND COALESCE(p.notify_in_app, 1) = 1`
+    )
+    .all(projectId, actorId);
+
+  const insert = db.prepare(
+    `INSERT INTO notifications (id, user_id, project_id, actor_id, type, title, body, link)
+     VALUES (?,?,?,?,?,?,?,?)`
+  );
+  const tx = db.transaction((rows) => {
+    for (const r of rows) insert.run(newId(), r.user_id, projectId, actorId, type, title, body, link);
+  });
+  tx(recipients);
+}
+
+export const asyncRoute = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);

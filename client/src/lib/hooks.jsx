@@ -34,6 +34,11 @@ export function AuthProvider({ children }) {
         await api.post('/api/auth/logout');
         setUser(null);
       },
+      refreshUser: async () => {
+        const d = await api.get('/api/auth/me');
+        setUser(d.user);
+        return d.user;
+      },
     }),
     [user, loading]
   );

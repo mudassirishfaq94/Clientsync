@@ -9,6 +9,7 @@ import projectRoutes from './routes/projects.js';
 import workRoutes from './routes/work.js';
 import fileRoutes from './routes/files.js';
 import adminRoutes from './routes/admin.js';
+import meRoutes from './routes/me.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/projects', workRoutes);
 app.use('/api/projects', fileRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/me', meRoutes);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found' }));
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useFetch, useToast } from '../../lib/hooks.jsx';
+import { useConfirm } from '../../lib/useConfirm.jsx';
 import {
   Alert, Badge, Button, Card, CardHead, Empty, Field, Input, Loading, Modal, Progress,
   Select, Textarea, formatDate, formatDateTime, label, STATUS_TONE,
@@ -122,6 +123,7 @@ function InviteModal({ projectId, onClose, onAdded }) {
 export default function Overview({ project, members, myRole, reload, onProjectChange }) {
   const toast = useToast();
   const activity = useFetch(`/api/projects/${project.id}/activity`);
+  const { confirm, dialog } = useConfirm();
   const [editing, setEditing] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -144,15 +146,17 @@ export default function Overview({ project, members, myRole, reload, onProjectCh
     }
   }
 
-  async function removeMember(id, name) {
-    if (!window.confirm(`Remove ${name} from this project?`)) return;
-    try {
-      await api.del(`/api/projects/${project.id}/members/${id}`);
-      toast.success('Member removed.');
-      reload(true);
-    } catch (err) {
-      toast.error(err.message);
-    }
+  function removeMember(id, name) {
+    confirm({
+      title: 'Remove member',
+      message: `Remove ${name} from this project? They will immediately lose access to it.`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
+        await api.del(`/api/projects/${project.id}/members/${id}`);
+        toast.success('Member removed.');
+        reload(true);
+      },
+    });
   }
 
   return (
@@ -278,6 +282,7 @@ export default function Overview({ project, members, myRole, reload, onProjectCh
         </Card>
       </div>
 
+      {dialog}
       {editing && <EditProjectModal project={project} onClose={() => setEditing(false)} onSaved={onProjectChange} />}
       {inviting && <InviteModal projectId={project.id} onClose={() => setInviting(false)} onAdded={() => reload(true)} />}
     </div>

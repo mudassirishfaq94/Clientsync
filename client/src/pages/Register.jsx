@@ -110,7 +110,7 @@ export default function Register() {
               {busy ? 'Creating account…' : 'Create account'}
             </Button>
             <p className="small muted center">
-              Already registered? <Link to="/login">Sign in</Link>
+              Already registered? <Link to="/auth/login">Sign in</Link>
             </p>
           </form>
         </Card>

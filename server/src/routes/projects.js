@@ -125,6 +125,74 @@ router.post('/', (req, res) => {
   res.status(201).json({ project: projectSummary(p, req.user.id) });
 });
 
+
+/**
+ * Dashboard summary. Every number is computed from real rows the caller can access.
+ * Freelancers/clients see only their own projects; admins see nothing extra here.
+ */
+router.get('/stats/summary', (req, res) => {
+  const scope =
+    req.user.role === 'admin'
+      ? { clause: '1=1', params: [] }
+      : {
+          clause: 'p.id IN (SELECT project_id FROM project_members WHERE user_id = ?)',
+          params: [req.user.id],
+        };
+
+  const projects = db
+    .prepare(`SELECT p.status, p.due_date, p.completed_at FROM projects p WHERE ${scope.clause}`)
+    .all(...scope.params);
+
+  const taskRow = db
+    .prepare(
+      `SELECT
+         COUNT(*) total,
+         SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) done,
+         SUM(CASE WHEN t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < date('now') THEN 1 ELSE 0 END) overdue,
+         SUM(CASE WHEN t.assignee_id = ? AND t.status != 'done' THEN 1 ELSE 0 END) mine_open
+       FROM tasks t JOIN projects p ON p.id = t.project_id
+       WHERE ${scope.clause}`
+    )
+    .get(req.user.id, ...scope.params);
+
+  const approvalRow = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN a.status = 'pending' THEN 1 ELSE 0 END) pending,
+         SUM(CASE WHEN a.status = 'approved' THEN 1 ELSE 0 END) approved,
+         SUM(CASE WHEN a.status = 'changes_requested' THEN 1 ELSE 0 END) changes_requested
+       FROM approvals a JOIN projects p ON p.id = a.project_id
+       WHERE ${scope.clause}`
+    )
+    .get(...scope.params);
+
+  const unread = db
+    .prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL')
+    .get(req.user.id).c;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  res.json({
+    stats: {
+      projects_total: projects.length,
+      projects_active: projects.filter((p) => p.status === 'active').length,
+      projects_on_hold: projects.filter((p) => p.status === 'on_hold').length,
+      projects_completed: projects.filter((p) => p.status === 'completed').length,
+      projects_overdue: projects.filter(
+        (p) => p.status !== 'completed' && p.status !== 'archived' && p.due_date && p.due_date < today
+      ).length,
+      tasks_total: taskRow.total || 0,
+      tasks_done: taskRow.done || 0,
+      tasks_overdue: taskRow.overdue || 0,
+      tasks_assigned_to_me_open: taskRow.mine_open || 0,
+      approvals_pending: approvalRow.pending || 0,
+      approvals_approved: approvalRow.approved || 0,
+      approvals_changes_requested: approvalRow.changes_requested || 0,
+      notifications_unread: unread,
+    },
+  });
+});
+
 router.get('/:projectId', projectAccess(), (req, res) => {
   const members = db
     .prepare(
@@ -236,7 +304,7 @@ router.delete('/:projectId/members/:userId', projectAccess({ freelancerOnly: tru
 router.get('/:projectId/activity', projectAccess(), (req, res) => {
   const rows = db
     .prepare(
-      `SELECT a.*, u.name actor_name FROM activity a LEFT JOIN users u ON u.id = a.actor_id
+      `SELECT a.*, u.name actor_name FROM activity_logs a LEFT JOIN users u ON u.id = a.actor_id
        WHERE a.project_id = ? ORDER BY a.created_at DESC, a.rowid DESC LIMIT 50`
     )
     .all(req.project.id);

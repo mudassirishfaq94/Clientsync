@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, UPLOAD_DIR } from '../db.js';
 import { requireAuth, projectAccess } from '../auth.js';
-import { newId, logActivity } from '../util.js';
+import { newId, logActivity, notifyProject } from '../util.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -52,7 +52,14 @@ router.post(
       req.file.mimetype || '',
       req.file.size
     );
-    logActivity(req.project.id, req.user.id, `uploaded ${req.file.originalname}`);
+    logActivity(req.project.id, req.user.id, `uploaded ${req.file.originalname}`, 'file', id);
+    notifyProject({
+      projectId: req.project.id,
+      actorId: req.user.id,
+      type: 'file_uploaded',
+      title: `${req.user.name} uploaded ${req.file.originalname}`,
+      link: `/projects/${req.project.id}/files`,
+    });
     const file = db
       .prepare('SELECT f.*, u.name uploader_name FROM files f JOIN users u ON u.id = f.uploader_id WHERE f.id = ?')
       .get(id);

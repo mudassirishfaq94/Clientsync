@@ -78,7 +78,7 @@ export default function Login() {
               {busy ? 'Signing in…' : 'Sign in'}
             </Button>
             <p className="small muted center">
-              No account? <Link to="/register">Create one</Link>
+              No account? <Link to="/auth/register">Create one</Link>
             </p>
           </form>
         </Card>

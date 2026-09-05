@@ -64,19 +64,63 @@ Authorization is enforced server-side by the `projectAccess()` middleware. Non-m
 5. **Completion** — a project can only be marked complete when no approvals are pending and every
    task is done. Every action is written to a per-project activity log.
 
+## Routes
+
+| Path | Purpose |
+| ---- | ------- |
+| `/` | Marketing landing page |
+| `/auth/login`, `/auth/register` | Authentication (`/login`, `/register` redirect here) |
+| `/dashboard` | Real-data metrics + recent projects |
+| `/projects` | Project list with search and status filter |
+| `/projects/:id` | Project overview (requirements, status, people, activity) |
+| `/projects/:id/tasks` | Kanban board |
+| `/projects/:id/milestones` | Phases |
+| `/projects/:id/files` | Uploads and downloads |
+| `/projects/:id/messages` | Project conversation |
+| `/projects/:id/approvals` | Approval requests and decisions |
+| `/client/:projectId` | Simplified client portal (clients only) |
+| `/settings`, `/settings/security`, `/settings/notifications` | Account settings |
+| `/admin` | Platform metrics (admin only) |
+| `*` | Not-found page |
+
+## Database
+
+13 tables, all with `created_at`; mutable tables also carry `updated_at` kept current by SQLite triggers.
+
+`users` · `profiles` · `workspaces` · `workspace_members` · `projects` · `project_members`
+`tasks` · `milestones` · `messages` · `files` · `approvals` · `notifications` · `activity_logs`
+
+Foreign keys are enforced (`PRAGMA foreign_keys = ON`) and cascade on delete, so removing a user or
+project leaves no orphan rows. The canonical DDL is `server/src/schema.sql`; `server/src/migrate.js`
+applies it idempotently at boot and upgrades older databases in place.
+
+## Component library
+
+`client/src/components/ui/primitives.jsx` exports the shared kit, re-exported from `components/ui.jsx`:
+
+Button · Input · Textarea · Select · Field · Modal · ConfirmDialog · Dropdown · Avatar · Badge
+Card / CardHead · Tabs · Alert · Progress · Empty · Skeleton / SkeletonCard / Loading · ErrorState
+
+Toasts come from `ToastProvider` (`lib/hooks.jsx`); `useConfirm()` (`lib/useConfirm.jsx`) provides
+an async confirm dialog with its own loading and error states, replacing `window.confirm`.
+
 ## Project structure
 
 ```
 server/src/
-  db.js              schema + connection
-  auth.js            JWT issue/verify, requireAuth, projectAccess guard
-  util.js            id generation, zod validation helper, activity log
-  routes/            auth, projects, work (milestones/tasks/messages/approvals), files, admin
+  schema.sql         canonical DDL
+  migrate.js         idempotent migrations + updated_at triggers
+  db.js              connection, pragmas, upload dir
+  auth.js            JWT issue/verify, requireAuth, requireAdmin, projectAccess guard
+  util.js            ids, zod validation helper, activity log, notification fan-out
+  routes/            auth, projects (+stats), work, files, me (profile/notifications), admin
 client/src/
-  lib/               api client (typed errors), auth + toast + fetch hooks
-  components/ui.jsx  reusable Card, Button, Field, Modal, Badge, Empty, Loading, ErrorState…
+  lib/               api client, auth + toast + fetch hooks, useConfirm
+  components/ui/     primitives.jsx — the reusable component kit
   components/project/ Overview, Tasks, Milestones, Files, Messages, Approvals
-  pages/             Landing, Login, Register, Dashboard, ProjectPage, Admin
+  pages/             Landing, Login, Register, Dashboard, ProjectsList, Settings,
+                     ClientPortal, Admin, NotFound
+  pages/project/     ProjectLayout + one page per nested section
 ```
 
 ## Notes
@@ -85,3 +129,7 @@ client/src/
 - Uploads are capped at 20 MB and stored outside the web root, served only through an
   access-checked download route.
 - The database ships empty apart from the admin account you create — there is no seeded demo data.
+- Dashboard and admin statistics are computed from real rows with SQL aggregates, scoped to the
+  projects the caller belongs to. Nothing is hard-coded or mocked.
+- Notifications are generated server-side on messages, uploads, approval requests and decisions,
+  fanned out to project members except the actor, and respect each user's preference.

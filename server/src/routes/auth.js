@@ -35,6 +35,7 @@ router.post('/register', (req, res) => {
   db.prepare(
     'INSERT INTO users (id, email, name, password_hash, role) VALUES (@id,@email,@name,@password_hash,@role)'
   ).run(user);
+  db.prepare('INSERT OR IGNORE INTO profiles (user_id) VALUES (?)').run(user.id);
 
   if (data.role === 'freelancer') {
     const wsId = newId();
@@ -77,7 +78,11 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', (req, res) => {
-  res.json({ user: req.user || null });
+  if (!req.user) return res.json({ user: null });
+  const profile = db
+    .prepare('SELECT avatar_color FROM profiles WHERE user_id = ?')
+    .get(req.user.id);
+  res.json({ user: { ...req.user, avatar_color: profile?.avatar_color || '#4f46e5' } });
 });
 
 router.get('/stats', requireAuth, (req, res) => {
